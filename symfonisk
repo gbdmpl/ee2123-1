@@ -1,0 +1,170 @@
+blueprint:
+# Media control via IKEA Symfonisk Gen2 - Shawsky April 2023
+# Based on https://gist.github.com/erkr/a437ebcb98a2b5ba2deebabd02f5ffae Eric Kreuwels
+# and https://gist.github.com/alexwmaustin/2c25cfa1a0ade1ab9fc1ef0940289672 Alex Austin
+  name: Z2M - IKEA Symfonisk sound controller GEN2 for media
+  description: 
+    'Control the selected media player with an IKEA Symfonisk sound controller GEN2 via Zigbee2MQTT (Z2M)
+
+    Supports single press on media buttons and single, double and long press for the "dot" buttons.'
+  domain: automation
+  input:
+    remote:
+      name: Remote
+      description: The IKEA Symfonisk controller GEN2 to use
+      selector:
+        device:
+          integration: mqtt
+          manufacturer: IKEA
+          model: SYMFONISK sound remote gen2 (E2123)
+          multiple: false
+    base_topic:
+      name: Zigbee2MQTT Base mqtt topic
+      description: The base topic configured in Zigbee2MQTT. If you haven't changed this, leave the default here ("zigbee2mqtt")
+      default: zigbee2mqtt
+    media_player:
+      name: Media Player
+      description: The media player to control with this automation
+      selector:
+        entity:
+          domain: media_player
+          multiple: false
+    volume_steps:
+      name: Volume number of steps
+      description: Controls the volume scale. The default of 25 is the same scale as the Sonos app.
+      default: 25
+      selector:
+        number:
+          min: 5
+          max: 50
+          step: 5
+          unit_of_measurement: "Num"
+          mode: slider
+    single_dot:
+      name: Single Dot (Single)
+      description: Action to run on single dot press
+      default: []
+      selector:
+        action: {}
+    single_dot_double_press:
+      name: Single Dot (Double)
+      description: Action to run on single dot double press
+      default: []
+      selector:
+        action: {}
+    single_dot_long_press:
+      name: Single Dot (Long)
+      description: Action to run on single dot long press
+      default: []
+      selector: 
+        action: {}
+    double_dot:
+      name: Double Dot (Single)
+      description: Action to run on double dot press
+      default: []
+      selector:
+        action: {}
+    double_dot_double_press:
+      name: Double Dot (Double)
+      description: Action to run on double dot double press
+      default: []
+      selector:
+        action: {}
+    double_dot_long_press:
+      name: Double Dot (Long)
+      description: Action to run on double dot long press
+      default: []
+      selector:
+        action: {}
+      
+mode: restart
+max_exceeded: silent
+
+trigger_variables:
+  base_topic: !input base_topic
+  controller: !input remote
+
+trigger:
+  - platform: mqtt
+    topic: "{{ base_topic }}/+/action"
+action:
+  - variables:
+      fname: "{{ device_attr(controller, 'name') }}"
+      player: !input 'media_player'
+      steps: !input volume_steps
+      stepsize: '{{ 1.0 / steps }}'
+  - choose:
+    - conditions:
+      - "{{ trigger.payload != ''}}"
+      - "{{ fname in trigger.topic }}"
+      sequence:
+        - choose:
+          # Play / Pause
+          - conditions: "{{ trigger.payload == 'toggle' }}"
+            sequence:
+            - service: media_player.media_play_pause
+              entity_id: !input 'media_player'
+          # Next Track
+          - conditions: "{{ trigger.payload == 'track_next' }}"
+            sequence:
+            - service: media_player.media_next_track
+              entity_id: !input 'media_player'
+          # Previous Track
+          - conditions: "{{ trigger.payload == 'track_previous' }}"
+            sequence:
+            - service: media_player.media_previous_track
+              entity_id: !input 'media_player'
+          # Volume Up Press
+          - conditions: "{{ trigger.payload == 'volume_up' }}"
+            sequence:
+            - service: media_player.volume_set
+              data:
+                volume_level: >-
+                  {% set volume = state_attr(player, "volume_level") + stepsize %}
+                  {{ 1.0 if volume > 1.0 else volume }}
+              entity_id: !input 'media_player'
+          # Volume Down Press
+          - conditions: "{{ trigger.payload == 'volume_down' }}"
+            sequence:
+            - service: media_player.volume_set
+              data:
+                volume_level: >-
+                  {% set volume = state_attr(player, "volume_level") - stepsize %}
+                  {{ 0.0 if volume < 0.0 else volume }}
+              entity_id: !input 'media_player'
+          # Volume Up Hold
+          - conditions: "{{ trigger.payload == 'volume_up_hold' }}"
+            sequence:
+            - service: media_player.volume_set
+              data:
+                volume_level: >-
+                  {% set volume = state_attr(player, "volume_level") + stepsize %}
+                  {{ 1.0 if volume > 1.0 else volume }}
+              entity_id: !input 'media_player'
+          # Volume Down Hold
+          - conditions: "{{ trigger.payload == 'volume_down_hold' }}"
+            sequence:
+            - service: media_player.volume_set
+              data:
+                volume_level: >-
+                  {% set volume = state_attr(player, "volume_level") - stepsize %}
+                  {{ 0.0 if volume < 0.0 else volume }}
+              entity_id: !input 'media_player'
+          # Single Dot Press
+          - conditions: "{{ trigger.payload == 'dots_1_short_release' }}"
+            sequence: !input single_dot
+          # Single Dot Double Press
+          - conditions: "{{ trigger.payload == 'dots_1_double_press' }}"
+            sequence: !input single_dot_double_press
+          # Single Dot Long Press
+          - conditions: "{{ trigger.payload == 'dots_1_long_press' }}"
+            sequence: !input single_dot_long_press
+          # Double Dot Press
+          - conditions: "{{ trigger.payload == 'dots_2_short_release' }}"
+            sequence: !input double_dot
+          # Double Dot Double Press
+          - conditions: "{{ trigger.payload == 'dots_2_double_press' }}"
+            sequence: !input double_dot_double_press
+          # Double Dot Long Press
+          - conditions: "{{ trigger.payload == 'dots_2_long_press' }}"
+            sequence: !input double_dot_long_press
